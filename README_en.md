@@ -38,7 +38,9 @@ A self-contained Skill file that consolidates raw A-share and related market dat
 >
 > The Skill file is structured Markdown + embedded Python. Any AI coding assistant with context injection can use it.
 
-> **V3.10.0 (2026-09-22):** after the TDX public servers stopped serving K-lines, order books and ticks (#52), the quote layer now lists the working sources first (Tencent → Tencent K-lines → TDX end-of-day package → Tencent ticks) and moves mootdx to the end as an archive. New: §1.4 `tencent_ticks()` — Tencent intraday tick-by-tick trades for the latest trading day (replaces mootdx ticks) — and §13.7 `futures_kline()` — Sina futures daily K-lines, continuous or single contract, **now covering DCE**. Layer 1 is renumbered; the old→new mapping is in the CHANGELOG.
+> **V3.10.1 (2026-10-07 · #57):** corrects the §1.2 Tencent K-line volume unit: **STAR Market (688 / 689) is in shares**, everything else is in lots. The docs said lots throughout, so STAR volumes converted per the old docs came out 100× too large. Also adds the rules for reconciling share-level volume with the TDX end-of-day package and Baostock. §1.4 ticks now use a pooled, auto-retrying session (one call ~70 s → ~25 s) and add `frame.attrs["complete"]`, which from 15:31 on checks for missing after-hours fixed-price trades; §13.7 futures daily K-lines retry too. Entry count, source count and returned data are unchanged.
+>
+> **V3.10.0 (2026-09-22):** after the TDX public servers stopped serving K-lines, order books and ticks (#52), the quote layer now lists the working sources first (Tencent → Tencent K-lines → TDX end-of-day package → Tencent ticks) and moves mootdx to the end as an archive. New: §1.4 `tencent_ticks()` — Tencent intraday ticks for the latest trading day, one snapshot about every 3 seconds (replaces mootdx ticks) — and §13.7 `futures_kline()` — Sina futures daily K-lines, continuous or single contract, **now covering DCE**. Layer 1 is renumbered; the old→new mapping is in the CHANGELOG.
 >
 > **V3.9.0 (2026-09-20):** three new layers — futures & commodities, event-driven, convertible bonds — plus Tencent K-lines, the TDX official end-of-day package, Sina research reports, ETF shares, yield curves and more in the existing layers: 25 new entries in total. The broken TDX public-server K-line commands (#52) are now routed over HTTP. See the [CHANGELOG](./CHANGELOG.md) (Chinese).
 
@@ -71,13 +73,13 @@ Plus 5 backups: official dragon-tiger, Sina fund flow, filings, official SSE/SZS
 ## Architecture
 
 ```
-China A-Share Full-Stack Data · 15-Layer Architecture · V3.10.0
+China A-Share Full-Stack Data · 15-Layer Architecture · V3.10.1
 │  (Priority: Tencent / exchanges and official bodies first — no IP bans; mootdx quote commands return empty since 2026-09,
 │   so it is only used for financials and F10; Eastmoney only for exclusive data, with built-in throttling)
 ├── Market Data    Tencent + TDX site + Baidu + Sina   Live price / PE / PB / market cap + Index/ETF + K-lines (w/ MA5/10/20)
 │                                                     + adjust factors qfq/hfq  ★V3.7
 │                                                     + adjusted daily/weekly/monthly & 1–60-min K-lines + full-market daily bars  ★V3.9
-│                                                     + intraday tick-by-tick trades (SSE/SZSE stocks + ETFs)  ★V3.10
+│                                                     + intraday ticks, ~3 s snapshots (SSE/SZSE stocks + ETFs)  ★V3.10
 ├── Research       Eastmoney + THS + iwencai + Sina   Stock reports / Industry reports / PDF / Consensus EPS / NL search
 │                                                     + Sina report list (second source)  ★V3.9
 ├── Signals        THS + Eastmoney                    Hot stocks + Sector attribution + Northbound flow
@@ -142,10 +144,10 @@ There are 82 primary entries and 5 backups. Counts refer to capability entries: 
 | Tencent Finance | PE(TTM) / PB / Market Cap / Float Cap / Turnover / Price Limits / Index / ETF |
 | **Tencent K-lines** | SSE/SZSE daily/weekly/monthly forward- and back-adjusted + 1/5/15/30/60-minute bars, rotating across three Tencent hosts; no BSE (V3.9 new) |
 | **TDX End-of-Day Package** | Every SSE/SZSE/BSE security's daily bar for one trading day, incl. turnover value; one 2–3 MB zip; 2022-01-04 and 2023-01-03 tested available, 2021-01-04 gone, not every day verified; packages before 2022-05-06 have no BSE files (V3.9 new) |
-| **Tencent Ticks** | Every trade of the latest trading day (~3-second snapshots): time / price / volume / value / buy-sell side, SSE/SZSE stocks + ETFs, no BSE; after the close the total is checked against the day's turnover (V3.10 new, replaces mootdx ticks) |
+| **Tencent Ticks** | All ticks of the latest trading day (~3-second snapshots, not Level-2 trade-by-trade): time / price / volume / value / buy-sell side, SSE/SZSE stocks + ETFs, no BSE; after the close the total is checked against the day's turnover (V3.10 new, replaces mootdx ticks) |
 | **Baidu K-line** | Daily K-line + MA5/MA10/MA20 moving averages included (V3.0 new) |
 | **Sina Adjust Factors** | qfq / hfq factor series + applying them to unadjusted candles (V3.7 new) |
-| mootdx Market Data (archive) | Candlesticks (multi-period) + order book + tick-by-tick + 46-field quote (⚠️ TDX public servers return empty since 2026-09, see FAQ #52; use Tencent K-lines / the end-of-day package for bars and Tencent Ticks for trades) |
+| mootdx Market Data (archive) | Candlesticks (multi-period) + order book + ticks + 46-field quote (⚠️ TDX public servers return empty since 2026-09, see FAQ #52; use Tencent K-lines / the end-of-day package for bars and Tencent Ticks for trades) |
 
 ### Research Reports
 
@@ -461,7 +463,7 @@ Tested on 2026-09-20 on each of the 10 built-in servers: all accept TCP connecti
 > - SSE/SZSE daily / weekly / monthly K-lines (adjusted) and 1–60-minute bars → §1.2 `tencent_kline()`
 > - Full-market SSE/SZSE/BSE daily bars for one trading day (with turnover value; the only daily-bar route for BSE) → §1.3 `tdx_daily_package()`
 > - Live price and order book → §1.1 Tencent, or the official exchange books in the backup table
-> - Intraday tick-by-tick trades → §1.4 `tencent_ticks()` (latest trading day only, no BSE)
+> - Intraday ticks → §1.4 `tencent_ticks()` (latest trading day only, no BSE)
 > - Financial snapshots / F10 "latest notes" → `tdx_client(check='finance')`, which still works; the other 8 F10 categories (company profile, shareholders, etc.) are no longer returned — see SKILL.md §6.2 for replacements
 >
 > In K-line mode `tdx_client()` probes servers first, so a full failure takes about a minute to raise.
@@ -486,12 +488,12 @@ cninfo IRM only covers Shenzhen-listed companies; Shanghai tickers return 0 rows
 
 ## Verification
 
-`python3 -m unittest discover -s tests -v` extracts the shipped code directly from SKILL.md and checks dates, fields, symbol routing, units, pagination and error propagation without network access (165 offline tests as of V3.10).
+`python3 -m unittest discover -s tests -v` extracts the shipped code directly from SKILL.md and checks dates, fields, symbol routing, units, pagination and error propagation without network access (173 offline tests as of V3.10.1).
 
 Live tests are opt-in; the date must be a trading day the sources have already published:
 
 ```bash
-# the tick and futures K-line entries added in V3.10
+# V3.10's tick and futures K-line entries, plus the §1.2 K-line volume-unit check (downloads one TDX end-of-day package)
 ASTOCK_LIVE_V310=1 python3 -m unittest tests.test_v310_sources -v
 # the 25 entries added in V3.9 (31 live calls)
 ASTOCK_LIVE_V39=2026-09-18 python3 -m unittest tests.test_v39_sources -v

@@ -48,6 +48,8 @@ I'm Simon, building AI agents and practical tools. Currently open to opportuniti
 >
 > Skill 文件本质是结构化 Markdown + 内嵌 Python，任何支持上下文注入的 AI 编程助手都能用。
 
+> **V3.10.1（2026-10-07 · #57）：** 更正 §1.2 腾讯 K 线的成交量单位：**科创板（688 / 689）是股**，其余是手。此前文档全写成手，照旧文档换算科创板会大 100 倍。同时补上和通达信盘后包、Baostock 按股对账的口径。§1.4 逐笔改走复用连接、自动重试的会话（一次约 70 秒 → 约 25 秒），新增 `frame.attrs["complete"]`，15:31 以后核对盘后定价段有没有缺笔；§13.7 期货日 K 同样自动重试。入口数、来源数、返回的数据都不变。
+>
 > **V3.10.0（2026-09-22）：** 通达信公开服务器的 K 线 / 盘口 / 逐笔命令失效（#52）后，行情层把可用来源排到前面（腾讯 → 腾讯 K 线 → 通达信盘后包 → 腾讯逐笔），mootdx 移到最后留档；新增 §1.4 `tencent_ticks()` 腾讯当日逐笔成交（替代 mootdx 逐笔）和 §13.7 `futures_kline()` 新浪期货日 K（主力连续 + 具体合约，**补上大商所**）。Layer 1 重新编号，旧编号对照见 CHANGELOG。
 >
 > **V3.9.0（2026-09-20）：** 新增期货与大宗商品、事件驱动、可转债三层，并在原有各层补上腾讯 K 线、通达信官网盘后包、新浪研报、ETF 份额、利率曲线等入口，共 25 个；通达信公开服务器的 K 线命令失效（#52）已改走 HTTP。详见 [CHANGELOG](./CHANGELOG.md)。
@@ -81,7 +83,7 @@ I'm Simon, building AI agents and practical tools. Currently open to opportuniti
 ## 架构
 
 ```
-A 股全栈数据 · 十五层架构 · V3.10.0
+A 股全栈数据 · 十五层架构 · V3.10.1
 │  （优先级：腾讯 / 交易所官方优先，不封 IP；mootdx 行情命令 2026-09 起失效，只用于财务与 F10；
 │    东财只用于独有数据，已内置限流防封）
 ├── 行情层    腾讯 + 通达信官网 + 百度 + 新浪   实时价 / PE / PB / 市值 + 指数 / ETF + K线(带MA5/10/20)
@@ -555,12 +557,12 @@ V2.1 改为本地自缓存。每次调用自动积累，越跑越丰富。首次
 
 ## 验证
 
-`python3 -m unittest discover -s tests -v` 直接从 SKILL.md 抽取发布代码，测试日期、字段、代码归属、单位、分页与错误传播，不访问网络（V3.10 起共 165 条离线测试）。
+`python3 -m unittest discover -s tests -v` 直接从 SKILL.md 抽取发布代码，测试日期、字段、代码归属、单位、分页与错误传播，不访问网络（V3.10.1 共 173 条离线测试）。
 
 真实网络测试需显式开启，日期须是源已发布数据的交易日：
 
 ```bash
-# V3.10 新增的逐笔与期货日 K
+# V3.10 的逐笔、期货日 K，以及 §1.2 K 线成交量单位核对（会下载一次通达信盘后包）
 ASTOCK_LIVE_V310=1 python3 -m unittest tests.test_v310_sources -v
 # V3.9 新增的 25 个入口（31 次真实调用）
 ASTOCK_LIVE_V39=2026-09-18 python3 -m unittest tests.test_v39_sources -v
